@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Projektansicht — KI-Werkbank</title>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --papier:#FAFAF8; --tinte:#16181D; --linie:#E3E1DB; --linie-hell:#F2F0EA;
+    --grau:#8A8578; --rot:#C1272D;
+    --c-forschung:#1F4E8C; --c-lehre:#2E7D5B; --c-akquisition:#C7731B; --c-admin:#6E7480;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--papier); color:var(--tinte);
+         font-family:'Archivo',system-ui,sans-serif; }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+
+  header { padding:26px 24px 16px; border-bottom:1px solid var(--linie); }
+  .eyebrow { font-family:'IBM Plex Mono',monospace; font-size:11px;
+             letter-spacing:.14em; text-transform:uppercase; color:var(--grau); }
+  h1 { margin:6px 0 0; font-size:28px; font-weight:800; letter-spacing:-.02em;
+       font-stretch:80%; }
+  .kpis { display:flex; gap:34px; margin-top:16px; flex-wrap:wrap; }
+  .kpi b { display:block; font-family:'IBM Plex Mono',monospace; font-size:23px;
+           font-weight:500; }
+  .kpi span { font-size:12px; color:var(--grau); }
+  .filter { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; }
+  .chip { display:flex; align-items:center; gap:7px; padding:6px 12px;
+          border-radius:999px; cursor:pointer; font:600 13px 'Archivo',sans-serif;
+          border:1.5px solid var(--linie); background:transparent; color:var(--grau); }
+  .chip .dot { width:8px; height:8px; border-radius:2px; }
+  .chip.an { color:var(--papier); }
+  .fehler { margin:24px; padding:16px 20px; border:1.5px solid var(--rot);
+            border-radius:6px; color:var(--rot); font-size:14px; max-width:640px; }
+
+  .scroll { overflow-x:auto; padding-bottom:40px; }
+  .gantt { position:relative; }
+  .kopf { display:flex; border-bottom:1.5px solid var(--tinte); position:sticky;
+          top:0; background:var(--papier); z-index:3; }
+  .lcol { width:290px; flex-shrink:0; padding:10px 24px; position:sticky; left:0;
+          background:var(--papier); z-index:2; }
+  .kopf .lcol { font-family:'IBM Plex Mono',monospace; font-size:11px;
+                letter-spacing:.1em; text-transform:uppercase; color:var(--grau); }
+  .mcol { width:46px; flex-shrink:0; text-align:center; padding:10px 0;
+          font-family:'IBM Plex Mono',monospace; font-size:10.5px; color:var(--grau);
+          border-left:1px solid var(--linie-hell); }
+  .mcol.heute { color:var(--rot); font-weight:600; }
+  .zeile { display:flex; border-bottom:1px solid var(--linie-hell); }
+  .pname { font-size:13px; font-weight:600; line-height:1.25; display:flex;
+           gap:6px; align-items:baseline; }
+  .pname .dot { width:8px; height:8px; border-radius:2px; flex-shrink:0;
+                transform:translateY(-1px); }
+  .pmeta { font-size:11px; color:var(--grau); margin-left:14px; display:flex;
+           gap:8px; }
+  .pmeta .ueber { color:var(--rot); }
+  .budget { height:3px; background:var(--linie-hell); border-radius:2px;
+            margin:5px 0 0 14px; overflow:hidden; }
+  .budget div { height:100%; opacity:.85; }
+  .zelle { width:46px; flex-shrink:0; position:relative;
+           border-left:1px solid var(--linie-hell); }
+  .balken { position:absolute; top:50%; left:2px; right:2px; height:16px;
+            transform:translateY(-50%); }
+  .zelle .tip { display:none; position:absolute; bottom:calc(50% + 12px); left:50%;
+                transform:translateX(-50%); background:var(--tinte);
+                color:var(--papier); font:11px 'IBM Plex Mono',monospace;
+                padding:3px 8px; border-radius:4px; white-space:nowrap; z-index:5; }
+  .zelle:hover .tip { display:block; }
+  .heutelinie { position:absolute; top:37px; bottom:0; width:0;
+                border-left:1.5px dashed var(--rot); z-index:2; pointer-events:none; }
+  .legende { padding:16px 24px; font-size:11.5px; color:var(--grau);
+             max-width:640px; line-height:1.5; }
+  @media (prefers-reduced-motion:no-preference) {
+    .chip { transition:background .12s, color .12s, border-color .12s; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="eyebrow" id="eyebrow">Auslastung</div>
+  <h1>Projektprogramm</h1>
+  <div class="kpis" id="kpis"></div>
+  <div class="filter" id="filter"></div>
+</header>
+<div id="inhalt"></div>
+
+<script>
+const DATA = {{ data | tojson }};
+const KAT = {
+  "Forschung":   { farbe:"var(--c-forschung)",   hex:"#1F4E8C" },
+  "Lehre":       { farbe:"var(--c-lehre)",       hex:"#2E7D5B" },
+  "Akquisition": { farbe:"var(--c-akquisition)", hex:"#C7731B" },
+  "Admin":       { farbe:"var(--c-admin)",       hex:"#6E7480" },
+};
+const MONATE_KURZ = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+
+if (DATA.fehler) {
+  document.getElementById("inhalt").innerHTML =
+    `<div class="fehler"><b>Stundenrapport nicht lesbar.</b><br>${DATA.fehler}<br>
+     Pfad in <span class="mono">STUNDENRAPPORT_PATH</span> prüfen, dann Seite neu laden.</div>`;
+} else {
+  bauen();
+}
+
+function bauen() {
+  const jahr = DATA.jahr;
+  const nRapportiert = DATA.monate.length;         // Jan..letzter rapportierter Monat
+  const heuteIdx = nRapportiert - 1;
+
+  // Achse: Jan <jahr> bis zum spätesten Projektende, mind. Dez <jahr>
+  let endIdx = 11;
+  for (const p of DATA.projekte) {
+    if (p.laufzeit.typ === "monat") {
+      const i = (p.laufzeit.jahr - jahr) * 12 + p.laufzeit.monat - 1;
+      if (i > endIdx) endIdx = i;
+    }
+  }
+  const achse = [];
+  for (let i = 0; i <= endIdx; i++) {
+    achse.push(MONATE_KURZ[i % 12] + " " + String(jahr + Math.floor(i / 12)).slice(2));
+  }
+  const maxH = Math.max(1, ...DATA.projekte.flatMap(p => p.stunden));
+
+  let aktiv = new Set(Object.keys(KAT));
+  const kats = [...new Set(DATA.projekte.map(p => p.kategorie))];
+  kats.forEach(k => { if (!KAT[k]) KAT[k] = { farbe:"var(--c-admin)", hex:"#6E7480" }; });
+
+  document.getElementById("eyebrow").textContent =
+    `Auslastung · Stand ${DATA.stand} · Quelle: ${DATA.quelle}`;
+
+  // Filter-Chips
+  const filterEl = document.getElementById("filter");
+  filterEl.innerHTML = "";
+  for (const k of kats) {
+    const btn = document.createElement("button");
+    btn.className = "chip an";
+    btn.style.background = KAT[k].hex; btn.style.borderColor = KAT[k].hex;
+    btn.innerHTML = `<span class="dot" style="background:var(--papier)"></span>${k}`;
+    btn.onclick = () => {
+      aktiv.has(k) ? aktiv.delete(k) : aktiv.add(k);
+      const an = aktiv.has(k);
+      btn.classList.toggle("an", an);
+      btn.style.background = an ? KAT[k].hex : "transparent";
+      btn.style.borderColor = an ? KAT[k].hex : "var(--linie)";
+      btn.querySelector(".dot").style.background = an ? "var(--papier)" : KAT[k].hex;
+      render();
+    };
+    filterEl.appendChild(btn);
+  }
+
+  function render() {
+    const projekte = DATA.projekte
+      .filter(p => aktiv.has(p.kategorie))
+      .sort((a, b) => kats.indexOf(a.kategorie) - kats.indexOf(b.kategorie));
+
+    // KPIs
+    const laufend = projekte.filter(p =>
+      p.laufzeit.typ !== "monat" ||
+      (p.laufzeit.jahr - jahr) * 12 + p.laufzeit.monat - 1 >= heuteIdx).length;
+    const kalk = projekte.reduce((s, p) => s + (p.kalk || 0), 0);
+    const verb = projekte.reduce((s, p) => s + (p.verb || 0), 0);
+    document.getElementById("kpis").innerHTML = [
+      ["laufende Projekte", laufend],
+      ["Stunden verbraucht", Math.round(verb)],
+      ["Stunden kalkuliert", Math.round(kalk)],
+      ["Stunden verfügbar", Math.round(kalk - verb + (DATA.ferien_verfuegbar || 0))],
+    ].map(([l, v]) => `<div class="kpi"><b>${v}</b><span>${l}</span></div>`).join("");
+
+    // Gantt
+    let html = `<div class="scroll"><div class="gantt" style="min-width:${290 + achse.length * 46}px">`;
+    html += `<div class="kopf"><div class="lcol">Projekt / Träger</div>`;
+    achse.forEach((m, i) => {
+      html += `<div class="mcol${i === heuteIdx ? " heute" : ""}">${m}</div>`;
+    });
+    html += `</div>`;
+    html += `<div class="heutelinie" style="left:${290 + heuteIdx * 46 + 23}px"></div>`;
+
+    for (const p of projekte) {
+      const farbe = KAT[p.kategorie].hex;
+      // Balkenstart: erster Monat mit Stunden; ohne Stunden -> nach heute (geplant)
+      let start = p.stunden.findIndex(h => h > 0);
+      if (start < 0) start = heuteIdx + 1;
+      let ende, offen = false, unklar = false;
+      if (p.laufzeit.typ === "monat") {
+        ende = (p.laufzeit.jahr - jahr) * 12 + p.laufzeit.monat - 1;
+      } else if (p.laufzeit.typ === "fortlaufend") {
+        ende = achse.length - 1; offen = true;
+      } else { ende = heuteIdx; unklar = true; }
+      if (ende < start) start = Math.max(0, ende);
+
+      const pct = p.kalk ? Math.min(100, Math.round((p.verb / p.kalk) * 100)) : null;
+      const ueber = p.kalk && p.verb > p.kalk;
+
+      html += `<div class="zeile"><div class="lcol">
+        <div class="pname"><span class="dot" style="background:${farbe}"></span><span>${p.projekt}</span></div>
+        <div class="pmeta"><span>${p.traeger || ""}</span>` +
+        (p.kalk ? `<span class="mono ${ueber ? "ueber" : ""}">${Math.round(p.verb)}/${Math.round(p.kalk)} h</span>`
+                : (p.verb ? `<span class="mono">${Math.round(p.verb)} h</span>` : "")) +
+        `</div>` +
+        (p.kalk ? `<div class="budget"><div style="width:${pct}%;background:${ueber ? "var(--rot)" : farbe}"></div></div>` : "") +
+        `</div>`;
+
+      achse.forEach((m, i) => {
+        const h = i < p.stunden.length ? p.stunden[i] : 0;
+        const im = i >= start && i <= ende;
+        let inner = "";
+        if (im) {
+          const op = h ? (0.25 + 0.75 * Math.min(1, h / maxH)) : 1;
+          const bg = h ? farbe : farbe + "26";
+          const r = (i === start ? "3px 0 0 3px" : (i === ende && !offen ? "0 3px 3px 0" : "0"));
+          inner += `<div class="balken" style="background:${bg};opacity:${h ? op : 1};border-radius:${r}"></div>`;
+        }
+        if (unklar && i === ende)
+          inner += `<span class="mono" style="position:absolute;top:50%;right:3px;transform:translateY(-50%);font-size:10px;color:var(--grau)">?</span>`;
+        if (h) inner += `<div class="tip">${h} h</div>`;
+        html += `<div class="zelle">${inner}</div>`;
+      });
+      html += `</div>`;
+    }
+
+    html += `<div class="legende">Balken = Projektlaufzeit (Ende gem. «Laufzeit bis»;
+      bis Achsenende = fortlaufend, «?» = Laufzeit im Rapport unklar).
+      Farbintensität = rapportierte Stunden pro Monat (Hover zeigt den Wert).
+      Minileiste links = Verbraucht/Kalkuliert, rot = überzogen.
+      Monate nach der roten Heute-Linie zeigen nur die geplante Laufzeit.
+      «Stunden verfügbar» oben enthält zusätzlich den Ferien-Saldo (${DATA.ferien_verfuegbar || 0} h)
+      aus dem Rapport — deshalb höher als die Summe der Projekt-Budgets allein.</div>`;
+    html += `</div></div>`;
+    document.getElementById("inhalt").innerHTML = html;
+  }
+
+  render();
+}
+</script>
+</body>
+</html>

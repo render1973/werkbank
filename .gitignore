@@ -1,0 +1,50 @@
+# Virtuelle Umgebungen -- gross, reproduzierbar aus requirements.txt
+venv/
+*/venv/
+*/*/venv/
+
+# Python-Cache
+__pycache__/
+*/__pycache__/
+*/*/__pycache__/
+*.pyc
+
+# Geheimnisse -- NIEMALS committen (API-Keys, echte Pfade)
+.env
+!.env.example
+
+# Laufzeit-/Nutzerdaten -- Audiodateien, generierte Protokolle,
+# anonymisierte PDFs koennen echte, teils sensible Besprechungs- und
+# Kundendaten enthalten. Gehoeren NICHT in die Versionsgeschichte,
+# auch nicht lokal -- falls das Repo je geteilt oder gepusht wird,
+# waere das ein Datenleck.
+hub/uploads/
+hub/output/
+apps/*/uploads/
+apps/*/output/
+apps/anonymisierung/pdfs/
+shared/gpu.lock
+
+# Einzelne echte Aufnahme(n), lose im hub/-Wurzelverzeichnis statt in
+# uploads/ (wird dort normalerweise nach Verarbeitung geloescht) --
+# gehoert aus demselben Grund nicht in die Versionsgeschichte.
+hub/*.m4a
+hub/*.mp3
+hub/*.wav
+
+# Sitzungsreihen-Liste -- Laufzeit-generierter Index mit echten Projekt-/
+# Kundennamen, kein Quellcode. App erstellt die Datei bei Bedarf neu
+# (sitzungsreihe.py faellt sonst auf die Output-Ordner zurueck).
+hub/reihen.json
+
+# Log-Dateien aus manuellen/automatisierten Testlaeufen
+hub/start_log.txt
+*.log
+
+# Claude-Code-Tool-Konfiguration -- lokal/maschinenspezifisch
+# (Berechtigungen), kein Projekt-Quellcode.
+.claude/settings.local.json
+
+# Betriebssystem
+.DS_Store
+Thumbs.db

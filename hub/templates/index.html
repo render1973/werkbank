@@ -1,0 +1,692 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>KI-Werkbank</title>
+<link rel="stylesheet" href="/static/typography.css">
+<style>
+  :root {
+    --navy: #1a2b4a;
+    --amber: #d4941e;
+    --border: #d9dde2;
+    --green: #256029;
+    --red: #a02020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: var(--font-sans);
+    background: var(--bg-page);
+    color: #222;
+    margin: 0;
+    padding: var(--page-padding);
+  }
+  .container { max-width: 1180px; margin: 0 auto; }
+
+  .tab-bar {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  .tab-bar a {
+    padding: 10px 18px;
+    text-decoration: none;
+    color: #666;
+    font-weight: 600;
+    font-size: var(--fs-sm);
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+  }
+  .tab-bar a.active { color: var(--navy); border-bottom-color: var(--amber); }
+  .tab-bar a:hover:not(.active) { color: var(--navy); }
+
+  .dashboard-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-bottom: 28px;
+  }
+  .dashboard-header h1 {
+    color: var(--navy);
+    font-size: var(--fs-h1);
+    margin: 0;
+  }
+  .gpu-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+  }
+  .gpu-badge::before {
+    content: '';
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .gpu-badge.free { background: #e8f5e9; color: var(--green); }
+  .gpu-badge.free::before { background: var(--green); }
+  .gpu-badge.busy { background: #fdf7ec; color: var(--amber); }
+  .gpu-badge.busy::before { background: var(--amber); }
+  .gpu-badge.unknown { background: #eef2f7; color: #667; }
+  .gpu-badge.unknown::before { background: #99a; }
+
+  .dashboard-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    align-items: start;
+  }
+  @media (max-width: 880px) {
+    .dashboard-grid { grid-template-columns: 1fr; }
+  }
+
+  .job-card {
+    background: white;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 26px;
+  }
+  .job-card h2 {
+    color: var(--navy);
+    font-size: var(--fs-h2);
+    margin: 0 0 4px 0;
+  }
+  .job-card .subtitle { color: #666; margin: 0 0 20px 0; font-size: var(--fs-sm); }
+
+  label {
+    display: block;
+    font-weight: 600;
+    font-size: var(--fs-sm);
+    margin-bottom: 6px;
+    margin-top: 16px;
+    color: var(--navy);
+  }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=date], textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: var(--fs-input);
+    font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: 8px;
+    padding: 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s;
+    margin-top: 8px;
+  }
+  .dropzone.dragover { border-color: var(--amber); background: #fdf7ec; }
+  .dropzone p { margin: 4px 0; color: #666; font-size: var(--fs-sm); }
+  .dropzone .filename { color: var(--navy); font-weight: 600; }
+  button {
+    background: var(--navy);
+    color: white;
+    border: none;
+    padding: 12px 28px;
+    border-radius: 6px;
+    font-size: var(--fs-body);
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 20px;
+    width: 100%;
+  }
+  button:disabled { background: #999; cursor: not-allowed; }
+  button:hover:not(:disabled) { background: #24365c; }
+
+  .status-box {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: var(--fs-sm);
+    display: none;
+  }
+  .status-box.working { display: block; background: #eef2f7; color: var(--navy); }
+  .status-box.error { display: block; background: #fde8e8; color: var(--red); }
+  .status-box.success { display: block; background: #e8f5e9; color: var(--green); }
+
+  .job-progress {
+    margin-top: 14px;
+    padding: 12px;
+    border-radius: 6px;
+    background: #eef2f7;
+  }
+  .job-progress .phase-label {
+    font-size: var(--fs-xs);
+    color: var(--navy);
+    font-weight: 600;
+  }
+  .progress-bar {
+    margin-top: 8px;
+    height: 8px;
+    border-radius: 4px;
+    background: #dde3ec;
+    overflow: hidden;
+  }
+  .progress-bar-fill {
+    height: 100%;
+    background: var(--amber);
+    transition: width 0.6s ease;
+  }
+
+  .result-panel { margin-top: 18px; display: none; }
+  .result-panel h3 {
+    margin: 0 0 8px 0;
+    color: var(--navy);
+    font-size: var(--fs-body);
+  }
+  .downloads { display: flex; gap: 10px; margin-top: 10px; flex-wrap: wrap; }
+  .downloads a {
+    background: var(--amber);
+    color: white;
+    text-decoration: none;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: var(--fs-xs);
+    font-weight: 600;
+  }
+  .downloads a:hover { opacity: 0.9; }
+  pre.preview {
+    background: #fafafa;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    white-space: pre-wrap;
+    font-family: var(--font-sans);
+    font-size: var(--fs-xs);
+    max-height: 280px;
+    overflow-y: auto;
+    margin-top: 10px;
+  }
+
+  .recent-results {
+    margin-top: 22px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+  }
+  .recent-results h3 {
+    margin: 0 0 8px 0;
+    color: var(--navy);
+    font-size: var(--fs-sm);
+  }
+  .recent-results ul { list-style: none; margin: 0; padding: 0; }
+  .recent-results li {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: var(--fs-xs);
+    border-bottom: 1px solid #f0f1f3;
+  }
+  .recent-results li:last-child { border-bottom: none; }
+  .recent-results a { color: var(--navy); text-decoration: none; }
+  .recent-results a:hover { text-decoration: underline; }
+  .recent-results .muted { color: #999; white-space: nowrap; }
+
+  .modus-switch {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .modus-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .modus-option input[type=radio] { margin-top: 3px; width: auto; cursor: pointer; }
+  .modus-option.active { border-color: var(--amber); background: #fdf7ec; }
+  .modus-option .modus-label {
+    font-weight: 600;
+    font-size: var(--fs-sm);
+    color: var(--navy);
+    display: block;
+  }
+  .modus-option .modus-desc {
+    font-size: var(--fs-xs);
+    color: #666;
+    display: block;
+    margin-top: 2px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <div class="tab-bar">
+    <a href="/" class="active">Tools</a>
+    <a href="/projekte">Projekte</a>
+  </div>
+
+  <div class="dashboard-header">
+    <h1>KI-Werkbank</h1>
+    <div class="gpu-badge unknown" id="gpuBadge">GPU: ...</div>
+  </div>
+
+  <div class="dashboard-grid">
+
+    <!-- ================= Transkription ================= -->
+    <div class="job-card">
+      <h2>Besprechung → Protokoll</h2>
+      <p class="subtitle">Audio hochladen. Lokale Transkription, Protokoll via Claude.</p>
+
+      <form id="uploadForm">
+        <label>Verarbeitung</label>
+        <div class="modus-switch" id="modusSwitch">
+          <label class="modus-option active" data-modus="protokoll_cloud">
+            <input type="radio" name="verarbeitung" value="protokoll_cloud" checked>
+            <span>
+              <span class="modus-label">Protokoll erstellen (Cloud, Claude API)</span>
+              <span class="modus-desc">Regelfall. Transkript bleibt lokal, die Protokoll-Erstellung läuft über die Claude-API.</span>
+            </span>
+          </label>
+          <label class="modus-option" data-modus="protokoll_lokal">
+            <input type="radio" name="verarbeitung" value="protokoll_lokal">
+            <span>
+              <span class="modus-label">Protokoll erstellen (lokal, Ollama)</span>
+              <span class="modus-desc">Läuft komplett offline über ein lokales Modell — kein Cloud-Zugriff.</span>
+            </span>
+          </label>
+          <label class="modus-option" data-modus="transkript">
+            <input type="radio" name="verarbeitung" value="transkript">
+            <span>
+              <span class="modus-label">Nur Transkript (lokal, kein Cloud-Zugriff)</span>
+              <span class="modus-desc">Nur die Rohfassung als Text, ohne Protokoll-Struktur — bewusste Ausnahme für heikle Besprechungen.</span>
+            </span>
+          </label>
+        </div>
+
+        <div id="protokollFelder">
+          <label>Sitzungsreihe</label>
+          <input type="text" id="reihe" list="reihenListe" placeholder="z.B. Jour Fixe CCTP — bestehende wählen oder neue eintragen">
+          <datalist id="reihenListe">
+            {% for r in reihen %}
+            <option value="{{ r }}">
+            {% endfor %}
+          </datalist>
+        </div>
+
+        <label id="titelLabel">Titel der Besprechung</label>
+        <input type="text" id="title" placeholder="z.B. Jour Fixe CCTP">
+
+        <label>Datum</label>
+        <input type="date" id="date">
+
+        <div id="zeitFeld">
+          <label>Zeit (optional)</label>
+          <input type="text" id="time" placeholder="z.B. 14.00-15.30 Uhr">
+        </div>
+
+        <div id="teilnehmendeFeld">
+          <label>Teilnehmende (optional)</label>
+          <input type="text" id="participants" placeholder="z.B. Thomas Heim, Markus Weber">
+        </div>
+
+        <label>Zusätzlicher Kontext (optional)</label>
+        <textarea id="notes" placeholder="Alles was Claude beim Protokollieren wissen sollte"></textarea>
+
+        <label>Audiodatei</label>
+        <div class="dropzone" id="dropzone">
+          <p class="filename" id="filename">Datei hierher ziehen oder klicken</p>
+          <p>mp3, wav, m4a, mp4, ogg, flac, webm</p>
+        </div>
+        <input type="file" id="audioFile" accept=".mp3,.wav,.m4a,.mp4,.ogg,.flac,.webm" style="display:none">
+
+        <button type="submit" id="submitBtn">Verarbeiten</button>
+      </form>
+
+      <div id="status" class="status-box"></div>
+      <div id="jobProgressTranskription" class="job-progress" style="display:none;"></div>
+
+      <div id="result" class="result-panel">
+        <h3>Ergebnis</h3>
+        <div class="downloads" id="downloads"></div>
+        <pre class="preview" id="preview"></pre>
+      </div>
+
+      <div class="recent-results">
+        <h3>Letzte Ergebnisse</h3>
+        <ul>
+          {% for item in recent_transkription %}
+          <li><a href="{{ item.url }}">{{ item.name }}</a> <span class="muted">{{ item.when }}</span></li>
+          {% else %}
+          <li class="muted">Noch keine Ergebnisse.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <!-- ================= PDF-Anonymisierung ================= -->
+    <div class="job-card">
+      <h2>PDF-Anonymisierung</h2>
+      <p class="subtitle">PDF hochladen. Namen, Adressen, Organisationen werden automatisch geschwärzt.</p>
+
+      <form id="anonymizeForm">
+        <label>PDF-Datei</label>
+        <div class="dropzone" id="pdfDropzone">
+          <p class="filename" id="pdfFilename">Datei hierher ziehen oder klicken</p>
+          <p>pdf</p>
+        </div>
+        <input type="file" id="pdfFile" accept=".pdf" style="display:none">
+
+        <button type="submit" id="anonymizeSubmitBtn">PDF anonymisieren</button>
+      </form>
+
+      <div id="anonStatus" class="status-box"></div>
+      <div id="jobProgressAnonymisierung" class="job-progress" style="display:none;"></div>
+
+      <div id="anonResult" class="result-panel">
+        <h3>Ergebnis</h3>
+        <p id="anonSummary" style="margin:0 0 8px 0; font-size:var(--fs-sm);"></p>
+        <div class="downloads" id="anonDownloads"></div>
+      </div>
+
+      <div class="recent-results">
+        <h3>Letzte Ergebnisse</h3>
+        <ul>
+          {% for item in recent_anonymisierung %}
+          <li><a href="{{ item.url }}">{{ item.name }}</a> <span class="muted">{{ item.when }}</span></li>
+          {% else %}
+          <li class="muted">Noch keine Ergebnisse.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ===================== Verarbeitungs-Schalter (Transkript/Cloud/lokal) =====================
+const modusSwitch = document.getElementById('modusSwitch');
+const modusOptions = [...modusSwitch.querySelectorAll('.modus-option')];
+const protokollFelder = document.getElementById('protokollFelder');
+const zeitFeld = document.getElementById('zeitFeld');
+const teilnehmendeFeld = document.getElementById('teilnehmendeFeld');
+const titelLabel = document.getElementById('titelLabel');
+
+function getVerarbeitungsModus() {
+  return modusSwitch.querySelector('input[name=verarbeitung]:checked').value;
+}
+
+function aktualisiereModusUI() {
+  const modus = getVerarbeitungsModus();
+  const istNurTranskript = modus === 'transkript';
+  modusOptions.forEach(opt => opt.classList.toggle('active', opt.dataset.modus === modus));
+  protokollFelder.style.display = istNurTranskript ? 'none' : 'block';
+  zeitFeld.style.display = istNurTranskript ? 'none' : 'block';
+  teilnehmendeFeld.style.display = istNurTranskript ? 'none' : 'block';
+  titelLabel.textContent = istNurTranskript ? 'Titel / Bezeichnung' : 'Titel der Besprechung';
+}
+
+modusSwitch.addEventListener('change', aktualisiereModusUI);
+aktualisiereModusUI();
+
+// ===================== Transkriptions-Formular =====================
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('audioFile');
+const filenameEl = document.getElementById('filename');
+let selectedFile = null;
+
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('dragover'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('dragover'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) setFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files.length) setFile(fileInput.files[0]);
+});
+
+function setFile(file) {
+  selectedFile = file;
+  filenameEl.textContent = file.name;
+}
+
+document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedFile) {
+    showStatus('error', 'Bitte zuerst eine Audiodatei auswählen.');
+    return;
+  }
+
+  const submitBtn = document.getElementById('submitBtn');
+  submitBtn.disabled = true;
+  document.getElementById('result').style.display = 'none';
+
+  const modus = getVerarbeitungsModus();
+  const arbeitsMeldung = {
+    transkript: 'Transkribiere — läuft komplett lokal, kein Cloud-Zugriff...',
+    protokoll_cloud: 'Transkribiere und erstelle Protokoll (Cloud) — kann bei langen Aufnahmen mehrere Minuten dauern...',
+    protokoll_lokal: 'Transkribiere und erstelle Protokoll (lokal, Ollama) — kann bei langen Aufnahmen mehrere Minuten dauern...',
+  }[modus];
+  showStatus('working', arbeitsMeldung);
+
+  const formData = new FormData();
+  formData.append('audio', selectedFile);
+  formData.append('verarbeitung', modus);
+  formData.append('reihe', document.getElementById('reihe').value);
+  formData.append('title', document.getElementById('title').value);
+  formData.append('date', document.getElementById('date').value);
+  formData.append('time', document.getElementById('time').value);
+  formData.append('participants', document.getElementById('participants').value);
+  formData.append('notes', document.getElementById('notes').value);
+
+  try {
+    const res = await fetch('/process', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (!res.ok || data.error) {
+      showStatus('error', data.error || 'Unbekannter Fehler.');
+      submitBtn.disabled = false;
+      return;
+    }
+
+    document.getElementById('preview').textContent = data.text_preview;
+
+    const downloadsEl = document.getElementById('downloads');
+    if (data.text_typ === 'transkript') {
+      showStatus('success', `Transkript fertig. Erkannte Sprache: ${data.transcript_language}.`);
+      downloadsEl.innerHTML = `
+        <a href="${data.downloads.transcript}">Rohes Transkript (.txt)</a>
+      `;
+    } else {
+      const abgleichHinweis = data.hatte_vorprotokoll
+        ? ` Pendenzen-Abgleich mit dem letzten Protokoll der Reihe "${data.reihe}" durchgeführt.`
+        : ` Erstes Protokoll der Reihe "${data.reihe}" — kein Vorprotokoll zum Abgleich.`;
+      showStatus('success', `Fertig (${data.engine}). Erkannte Sprache: ${data.transcript_language}.${abgleichHinweis}`);
+      downloadsEl.innerHTML = `
+        <a href="${data.downloads.docx}">Word (.docx)</a>
+        <a href="${data.downloads.md}">Markdown</a>
+        <a href="${data.downloads.transcript}">Rohes Transkript</a>
+      `;
+    }
+    document.getElementById('result').style.display = 'block';
+  } catch (err) {
+    showStatus('error', 'Verbindungsfehler: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+function showStatus(type, message) {
+  const el = document.getElementById('status');
+  el.className = 'status-box ' + type;
+  el.textContent = message;
+}
+
+// ===================== PDF-Anonymisierung =====================
+const pdfDropzone = document.getElementById('pdfDropzone');
+const pdfFileInput = document.getElementById('pdfFile');
+const pdfFilenameEl = document.getElementById('pdfFilename');
+let selectedPdfFile = null;
+
+pdfDropzone.addEventListener('click', () => pdfFileInput.click());
+pdfDropzone.addEventListener('dragover', e => { e.preventDefault(); pdfDropzone.classList.add('dragover'); });
+pdfDropzone.addEventListener('dragleave', () => pdfDropzone.classList.remove('dragover'));
+pdfDropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  pdfDropzone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) setPdfFile(e.dataTransfer.files[0]);
+});
+pdfFileInput.addEventListener('change', () => {
+  if (pdfFileInput.files.length) setPdfFile(pdfFileInput.files[0]);
+});
+
+function setPdfFile(file) {
+  selectedPdfFile = file;
+  pdfFilenameEl.textContent = file.name;
+}
+
+document.getElementById('anonymizeForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!selectedPdfFile) {
+    showAnonStatus('error', 'Bitte zuerst eine PDF-Datei auswählen.');
+    return;
+  }
+
+  const submitBtn = document.getElementById('anonymizeSubmitBtn');
+  submitBtn.disabled = true;
+  document.getElementById('anonResult').style.display = 'none';
+  showAnonStatus('working', 'Anonymisiere PDF — kann je nach Seitenzahl mehrere Minuten dauern...');
+
+  const formData = new FormData();
+  formData.append('pdf', selectedPdfFile);
+
+  try {
+    const res = await fetch('/anonymize', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    // data.error deckt sowohl "Sidecar läuft nicht" (503) als auch
+    // "GPU belegt" (503, vom Sidecar durchgereicht) und andere Fehler ab —
+    // die konkrete Meldung vom Server wird 1:1 angezeigt, kein generischer Text.
+    if (!res.ok || data.error) {
+      showAnonStatus('error', data.error || 'Unbekannter Fehler.');
+      submitBtn.disabled = false;
+      return;
+    }
+
+    showAnonStatus('success', `Fertig. ${data.n_hits} Treffer anonymisiert.`);
+    document.getElementById('anonSummary').textContent = `${data.n_hits} Treffer gefunden und geschwärzt.`;
+    document.getElementById('anonDownloads').innerHTML = `
+      <a href="/download-anonymized?path=${encodeURIComponent(data.anonymisiert_path)}">Anonymisiert (.md)</a>
+      <a href="/download-anonymized?path=${encodeURIComponent(data.roh_path)}">Rohtext (.md)</a>
+    `;
+    document.getElementById('anonResult').style.display = 'block';
+  } catch (err) {
+    showAnonStatus('error', 'Verbindungsfehler: ' + err.message);
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+
+function showAnonStatus(type, message) {
+  const el = document.getElementById('anonStatus');
+  el.className = 'status-box ' + type;
+  el.textContent = message;
+}
+
+// ===================== Status-Polling (Dashboard) =====================
+const TRANSKRIPTION_PHASEN = {
+  idle: 'Bereit',
+  wartet_auf_gpu: 'Wartet auf GPU (durch PDF-Anonymisierung belegt) …',
+  modell_laden: 'Lade Whisper-Modell …',
+  transkribiert: 'Transkribiere …',
+  protokoll_wird_erstellt: 'Erstelle Protokoll (Claude) …',
+};
+
+const ANONYMISIERUNG_PHASEN = {
+  idle: 'Bereit',
+  modelle_laden: 'Lade Modelle (PaddleOCR + Presidio/GLiNER) …',
+  ocr_laeuft: 'OCR läuft …',
+  anonymisierung_laeuft: 'Anonymisierung läuft …',
+  nicht_erreichbar: 'Sidecar nicht erreichbar',
+  fehler: 'Sidecar-Status nicht lesbar',
+};
+
+function formatDuration(seconds) {
+  if (seconds < 5) return 'wenigen Sekunden';
+  if (seconds < 60) return `${Math.round(seconds)}s`;
+  const min = Math.floor(seconds / 60);
+  const sec = Math.round(seconds % 60);
+  return `${min}min ${sec}s`;
+}
+
+let transkriptionPhaseSeit = null;
+let transkriptionPhaseName = null;
+
+async function pollStatus() {
+  let data;
+  try {
+    const res = await fetch('/status');
+    if (!res.ok) return;
+    data = await res.json();
+  } catch (err) {
+    return; // naechster Poll-Zyklus versucht es erneut
+  }
+
+  // --- GPU-Badge ---
+  const gpuBadge = document.getElementById('gpuBadge');
+  if (data.gpu.belegt) {
+    gpuBadge.textContent = 'GPU: belegt';
+    gpuBadge.className = 'gpu-badge busy';
+  } else {
+    gpuBadge.textContent = 'GPU: frei';
+    gpuBadge.className = 'gpu-badge free';
+  }
+
+  // --- Transkription ---
+  const t = data.transkription;
+  const tEl = document.getElementById('jobProgressTranskription');
+  tEl.style.display = 'block';
+
+  if (t.phase !== transkriptionPhaseName) {
+    transkriptionPhaseName = t.phase;
+    transkriptionPhaseSeit = Date.now();
+  }
+
+  if (t.phase === 'transkribiert' && t.total > 0) {
+    const pct = Math.min(100, Math.round((t.current / t.total) * 100));
+    let etaText = '';
+    if (t.current > 1) {
+      const elapsedS = (Date.now() - transkriptionPhaseSeit) / 1000;
+      const remainingS = elapsedS * (t.total - t.current) / t.current;
+      if (remainingS > 0) etaText = ` — ca. noch ${formatDuration(remainingS)}`;
+    }
+    tEl.innerHTML = `
+      <div class="phase-label">${TRANSKRIPTION_PHASEN[t.phase] || t.phase} ${pct}%${etaText}</div>
+      <div class="progress-bar"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+    `;
+  } else {
+    tEl.innerHTML = `<div class="phase-label">${TRANSKRIPTION_PHASEN[t.phase] || t.phase}</div>`;
+  }
+
+  // --- Anonymisierung ---
+  const a = data.anonymisierung;
+  const aEl = document.getElementById('jobProgressAnonymisierung');
+  aEl.style.display = 'block';
+  aEl.innerHTML = `<div class="phase-label">${ANONYMISIERUNG_PHASEN[a.phase] || a.phase}</div>`;
+}
+
+pollStatus();
+setInterval(pollStatus, 3000);
+</script>
+</body>
+</html>

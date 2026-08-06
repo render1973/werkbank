@@ -1,0 +1,10 @@
+@"
+from paddleocr import PaddleOCRVL
+
+pipeline = PaddleOCRVL()
+output = pipeline.predict("20260216_Update Baustart_Oberengstringen.pdf")
+
+for res in output:
+    res.print()
+    res.save_to_markdown(save_path="output")
+"@ | Set-Content -Path test_paddleocr.py -Encoding utf8

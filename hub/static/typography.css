@@ -1,0 +1,28 @@
+/*
+ * Gemeinsame Typografie fuer alle Werkbank-Dashboards (Hub + Projektansicht).
+ * Schriftart + Groessen-Skala, plus die Seiten-Rahmenwerte (--bg-page,
+ * --page-padding) - Farbschema-Variablen sonst weiterhin bewusst pro
+ * Template eigenstaendig (unterschiedliche Farbschemata je App).
+ * --bg-page/--page-padding sind die Ausnahme: body-Hintergrund und
+ * -Padding sind rein strukturell (kein Teil des Farbschemas) und sind
+ * bereits dreimal unbemerkt auseinandergelaufen (Titel-Gewicht, Header-
+ * Padding, Body-Hintergrund/Padding) - deshalb hier zentral statt pro
+ * Template dupliziert.
+ *
+ * Werte 1:1 aus hub/templates/index.html uebernommen (Quelle der Wahrheit).
+ * Kein Google-Fonts-Link noetig - der Hub nutzt bewusst einen System-Font-
+ * Stack (keine externen Requests, funktioniert offline).
+ */
+:root {
+  --font-sans: -apple-system, "Segoe UI", Verdana, sans-serif;
+
+  --fs-xs: 0.85rem;    /* Badges, Meta-Text, kleine Labels */
+  --fs-sm: 0.9rem;     /* Tabs, Subtitles, Formular-Labels */
+  --fs-input: 0.95rem; /* Eingabefelder */
+  --fs-body: 1rem;     /* Buttons, Fliesstext */
+  --fs-h2: 1.2rem;     /* Karten-/Abschnittsueberschriften */
+  --fs-h1: 1.6rem;     /* Seitentitel */
+
+  --bg-page: #f7f8fa;         /* body-Hintergrund */
+  --page-padding: 32px 20px;  /* body-Aussenabstand */
+}
