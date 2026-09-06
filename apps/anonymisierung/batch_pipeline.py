@@ -1,6 +1,16 @@
 """
 Batch-Pipeline: verarbeitet ALLE PDFs in einem Ordner in einem einzigen Programmlauf.
-Die Modelle (PaddleOCR-VL, GLiNER) werden nur EINMAL geladen, nicht pro Datei.
+
+WICHTIG (Stand 28.08.2026): Der OCR-Schritt (PaddleOCR-VL) läuft pro PDF in
+einem eigenen Subprozess (ocr_worker.py), nicht mehr im Hauptprozess. Grund:
+bekannter Paddle-Bug — eine PaddleOCRVL-Instanz verträgt nur einen einzigen
+.predict()-Aufruf zuverlässig, der zweite crasht deterministisch mit
+"int(Tensor) is not supported in static graph mode" und korrumpiert den
+GPU-Zustand des Prozesses. Presidio + GLiNER sind von diesem Bug NICHT
+betroffen und werden weiterhin nur einmal geladen.
+
+Kostenpunkt dieser Änderung: PaddleOCR-VL wird jetzt pro PDF neu geladen
+(vorher: einmal für den ganzen Batch). Bei vielen PDFs summiert sich das.
 
 Nutzung:
     python batch_pipeline.py <ordner_mit_pdfs>
@@ -11,16 +21,18 @@ Ergebnis pro PDF:
 """
 
 import re
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-from paddleocr import PaddleOCRVL
 from presidio_analyzer import AnalyzerEngine, PatternRecognizer
 from presidio_analyzer.nlp_engine import NlpEngineProvider
 from presidio_analyzer.predefined_recognizers import GLiNERRecognizer
 from presidio_anonymizer import AnonymizerEngine
 from presidio_anonymizer.entities import OperatorConfig
+
+WORKER_SCRIPT = Path(__file__).parent / "ocr_worker.py"
 
 
 def clean_markdown(text: str) -> str:
@@ -32,27 +44,33 @@ def clean_markdown(text: str) -> str:
     return text.strip()
 
 
-def convert_pdf(pdf_path: Path, work_dir: Path, ocr_pipeline: PaddleOCRVL) -> str:
-    output = ocr_pipeline.predict(str(pdf_path))
-    page_dir = work_dir / "pages"
-    page_dir.mkdir(parents=True, exist_ok=True)
-    for res in output:
-        res.save_to_markdown(save_path=str(page_dir))
+def convert_pdf_via_subprocess(pdf_path: Path, work_dir: Path) -> str:
+    """Startet ocr_worker.py als frischen Prozess fuer GENAU diese eine PDF.
+    So trifft der Paddle-Bug (2. predict()-Aufruf crasht) nie zu, weil jeder
+    Prozess nur einen einzigen predict()-Aufruf macht."""
 
-    md_files = sorted(
-        page_dir.glob(f"{pdf_path.stem}_*.md"),
-        key=lambda f: int(f.stem.rsplit("_", 1)[-1]),
+    result = subprocess.run(
+        [sys.executable, str(WORKER_SCRIPT), str(pdf_path), str(work_dir)],
+        capture_output=True,
+        text=True,
     )
-    if not md_files:
-        raise RuntimeError("Keine Markdown-Seiten erzeugt.")
-    return "\n\n---\n\n".join(f.read_text(encoding="utf-8") for f in md_files)
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"OCR-Worker fehlgeschlagen (Exitcode {result.returncode}): "
+            f"{result.stderr.strip() or '(keine stderr-Ausgabe)'}"
+        )
+
+    roh_path = work_dir / "roh.md"
+    if not roh_path.exists():
+        raise RuntimeError("OCR-Worker lief durch, aber roh.md wurde nicht geschrieben.")
+    return roh_path.read_text(encoding="utf-8")
 
 
 def build_analyzer_and_anonymizer():
     """Baut den Presidio-Analyzer (deutsches spaCy fuer Tokenisierung + offizieller
-    GLiNER-Recognizer fuer die Haupterkennung + Deny-Lists fuer bekannte
-    Firmenkuerzel/Ortsnamen, die GLiNER ohne viel Kontext leicht uebersieht,
-    z.B. wenn sie isoliert in Titeln/Kopfzeilen stehen) und den Anonymizer."""
+    GLiNER-Recognizer fuer die Haupterkennung + Deny-List fuer bekannte
+    Firmenkuerzel, die GLiNER ohne viel Kontext leicht uebersieht) und den
+    Anonymizer."""
 
     nlp_engine = NlpEngineProvider(
         nlp_configuration={
@@ -93,19 +111,6 @@ def build_analyzer_and_anonymizer():
     )
     analyzer.registry.add_recognizer(org_deny_list_recognizer)
 
-    # Bekannte Ortsnamen, die GLiNER isoliert (z.B. in Projekttiteln oder
-    # Kopfzeilen ohne umgebenden Satzkontext) leicht uebersieht - analog zur
-    # Firmenkuerzel-Deny-List oben. Hier eigene wiederkehrende Projektorte
-    # ergaenzen, z.B. known_locations = ["Oberengstringen"]
-    known_locations = []
-    if known_locations:
-        location_deny_list_recognizer = PatternRecognizer(
-            supported_entity="LOCATION",
-            deny_list=known_locations,
-            supported_language="de",
-        )
-        analyzer.registry.add_recognizer(location_deny_list_recognizer)
-
     anonymizer = AnonymizerEngine()
     return analyzer, anonymizer
 
@@ -141,13 +146,13 @@ def main():
         print(f"Keine PDFs in {input_dir} gefunden.")
         sys.exit(1)
 
-    print(f"Gefunden: {len(pdfs)} PDF(s). Lade Modelle (einmalig) ...")
+    print(f"Gefunden: {len(pdfs)} PDF(s). Lade Presidio/GLiNER (einmalig) ...")
+    print("Hinweis: PaddleOCR-VL läuft pro PDF in einem eigenen Prozess (Bug-Workaround).")
     load_start = time.time()
 
-    ocr_pipeline = PaddleOCRVL()
     analyzer, anonymizer = build_analyzer_and_anonymizer()
 
-    print(f"Modelle geladen in {time.time() - load_start:.1f}s.\n")
+    print(f"Presidio/GLiNER geladen in {time.time() - load_start:.1f}s.\n")
 
     for i, pdf_path in enumerate(pdfs, 1):
         print(f"[{i}/{len(pdfs)}] {pdf_path.name}")
@@ -157,14 +162,17 @@ def main():
         work_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            merged_text = convert_pdf(pdf_path, work_dir, ocr_pipeline)
-            (work_dir / "roh.md").write_text(merged_text, encoding="utf-8")
+            merged_text = convert_pdf_via_subprocess(pdf_path, work_dir)
+            ocr_done = time.time()
 
             anonymized_text, n_hits = anonymize(merged_text, analyzer, anonymizer)
             out_path = work_dir / "anonymisiert.md"
             out_path.write_text(anonymized_text, encoding="utf-8")
 
-            print(f"   OK - {n_hits} Treffer, {time.time() - t0:.1f}s -> {out_path}")
+            print(
+                f"   OK - {n_hits} Treffer, OCR {ocr_done - t0:.1f}s / "
+                f"gesamt {time.time() - t0:.1f}s -> {out_path}"
+            )
         except Exception as e:
             print(f"   FEHLER bei {pdf_path.name}: {e}")
 

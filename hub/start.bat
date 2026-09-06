@@ -1,10 +1,8 @@
 @echo off
 REM Besprechung-Protokoll-Pipeline starten
-REM Doppelklick genügt — venv wird aktiviert, CUDA-Pfade gesetzt, App gestartet.
+REM Doppelklick genügt — venv-Python wird direkt aufgerufen, CUDA-Pfade gesetzt, App gestartet.
 
 cd /d "%~dp0"
-
-call venv\Scripts\activate.bat
 
 set PATH=%~dp0venv\Lib\site-packages\nvidia\cublas\bin;%PATH%
 set PATH=%~dp0venv\Lib\site-packages\nvidia\cudnn\bin;%PATH%
@@ -17,6 +15,6 @@ echo Zum Beenden: Strg+C, dann eine Taste druecken
 echo ============================================================
 echo.
 
-python app.py
+"%~dp0venv\Scripts\python.exe" app.py
 
 pause

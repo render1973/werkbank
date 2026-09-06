@@ -188,6 +188,34 @@ def _num(v):
         return None
 
 
+def _find_latest_monats_sheet(wb):
+    """Sucht unter ALLEN Sheet-Namen der Mappe diejenigen, die einem
+    Monatsnamen + Jahr entsprechen ("August 2026"), und gibt das späteste
+    zurück - unabhängig von der Position in der Mappe. Damit bricht es
+    nicht mehr, wenn ein Nicht-Monats-Sheet (z.B. eine Stundenlohn/Geko-
+    Hilfstabelle namens "Tabelle1") ans Ende der Mappe verschoben oder neu
+    angehängt wird - das war frueher implizit die Annahme hinter
+    'letztes Sheet = neuestes Monatsblatt', die diese Aenderung bricht.
+    Fallback auf das alte Verhalten (letztes Sheet), falls gar kein
+    Sheet-Name als Monat+Jahr erkannt wird - z.B. bei komplett anderem
+    Namensschema."""
+    kandidaten = []
+    for name in wb.sheetnames:
+        jahr = None
+        monat = None
+        for token in name.split():
+            if token.isdigit() and len(token) == 4:
+                jahr = int(token)
+            elif token.capitalize() in MONATE:
+                monat = MONATE.index(token.capitalize()) + 1
+        if jahr is not None and monat is not None:
+            kandidaten.append((jahr, monat, name))
+    if kandidaten:
+        kandidaten.sort()
+        return wb[kandidaten[-1][2]]
+    return wb[wb.sheetnames[-1]]  # Fallback: altes Verhalten
+
+
 def parse_stundenrapport(xlsx_path: str) -> dict:
     path = Path(xlsx_path)
     if not path.exists():
@@ -201,7 +229,7 @@ def parse_stundenrapport(xlsx_path: str) -> dict:
                           f"Seite neu laden."}
     except Exception as exc:
         return {"fehler": f"Datei '{path.name}' konnte nicht gelesen werden: {exc}"}
-    ws = wb[wb.sheetnames[-1]]  # neuestes Monats-Sheet
+    ws = _find_latest_monats_sheet(wb)  # spätestes erkanntes Monats-Sheet
 
     # Jahr UND Monat aus dem Sheetnamen ("August 2026") lesen. Der Monat wird
     # separat gebraucht, um die "Heute"-Linie im Dashboard zu platzieren --
