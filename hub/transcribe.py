@@ -135,7 +135,7 @@ def transcribe_audio(audio_path: str) -> dict:
 
         segments, info = model.transcribe(
             audio_path,
-            language=None,       # None = automatische Spracherkennung (DE/EN/etc.)
+            language="de",
             vad_filter=True,      # Stille/Pausen herausfiltern, verbessert Qualität
             beam_size=5,
             condition_on_previous_text=False,  # verhindert Wiederholungsschleifen
